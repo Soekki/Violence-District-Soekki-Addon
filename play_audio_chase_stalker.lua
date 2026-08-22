@@ -1,5 +1,5 @@
 -- =========================================================
--- STALKER CUSTOM CHASE MUSIC
+-- STALKER + MASKED CUSTOM CHASE MUSIC
 -- =========================================================
 --
 -- 1. Блокирует стандартную музыку Killer (ChaseMusic)
@@ -95,6 +95,47 @@ local zoneConfigs = {
 
 
 -- =========================================================
+-- MASKED WAV
+-- =========================================================
+-- 0-24m   -> chase_m.wav
+-- 24-48m  -> 8m.wav
+-- 48-72m  -> 16m.wav
+-- 72-96m  -> 32m.wav
+-- =========================================================
+
+local maskedZoneConfigs = {
+
+    {
+        name = "32M_MASKED",
+        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/main/Sounds/Masked/32m.wav",
+        minDist = 72,
+        maxDist = 96
+    },
+
+    {
+        name = "16M_MASKED",
+        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/main/Sounds/Masked/16m.wav",
+        minDist = 48,
+        maxDist = 72
+    },
+
+    {
+        name = "8M_MASKED",
+        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/main/Sounds/Masked/8m.wav",
+        minDist = 24,
+        maxDist = 48
+    },
+
+    {
+        name = "CHASE_MASKED",
+        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/main/Sounds/Masked/chase_m.wav",
+        minDist = 0,
+        maxDist = 24
+    }
+}
+
+
+-- =========================================================
 -- БЛОКИРОВКА ОРИГИНАЛЬНОЙ МУЗЫКИ KILLER
 -- =========================================================
 --
@@ -173,7 +214,7 @@ blockKillerMusic()
 -- =========================================================
 
 print("========================================")
-print("   STALKER AUDIO / XENO")
+print("   STALKER + MASKED AUDIO / XENO")
 print("========================================")
 
 print("writefile:", type(writefile))
@@ -272,9 +313,10 @@ end
 -- CACHE FILENAME
 -- =========================================================
 
-local function getCacheFilename(index)
+local function getCacheFilename(prefix, index)
 
-    return "stalker_"
+    return prefix
+        .. "_"
         .. CACHE_VERSION
         .. "_"
         .. index
@@ -448,7 +490,7 @@ local zones = {}
 for i, config in ipairs(zoneConfigs) do
 
     local filename =
-        getCacheFilename(i)
+        getCacheFilename("stalker", i)
 
 
     local downloaded = false
@@ -553,12 +595,68 @@ end
 
 
 -- =========================================================
+-- ЗАГРУЗКА MASKED WAV
+-- =========================================================
+
+local maskedZones = {}
+
+for i, config in ipairs(maskedZoneConfigs) do
+
+    local filename =
+        getCacheFilename("masked", i)
+
+    local downloaded = false
+
+    if isCachedWavValid(filename) then
+
+        print(
+            "📁 Уже есть корректный MASKED WAV:",
+            filename
+        )
+
+        downloaded = true
+
+    else
+
+        print(
+            "🔄 MASKED файл отсутствует или повреждён:",
+            filename
+        )
+
+        downloaded =
+            downloadSound(
+                config,
+                filename
+            )
+
+    end
+
+    maskedZones[#maskedZones + 1] = {
+
+        name = config.name,
+
+        file =
+            downloaded
+            and filename
+            or nil,
+
+        minDist = config.minDist,
+
+        maxDist = config.maxDist
+
+    }
+
+end
+
+
+-- =========================================================
 -- ТЕКУЩИЙ STALKER SOUND
 -- =========================================================
 
 local currentSound = nil
 local currentFile = nil
 local currentTarget = nil
+local currentKillerType = nil
 
 
 -- =========================================================
@@ -652,7 +750,7 @@ local function playSoundFile(filename)
 
 
     sound.Name =
-        "StalkerAudio"
+        "KillerCustomAudio"
 
     sound.SoundId =
         assetUrl
@@ -810,25 +908,18 @@ end
 
 
 -- =========================================================
--- ПРОВЕРКА STALKER
+-- ПРОВЕРКА KILLER
 -- =========================================================
 
-local function isStalkerKiller(p)
+local function getKillerType(p)
 
     if not p
         or p == player then
 
-        return false
-
+        return nil
     end
 
-
-    -- =====================================================
-    -- TEAM
-    -- =====================================================
-
     local teamName = ""
-
 
     if p.Team then
 
@@ -838,47 +929,22 @@ local function isStalkerKiller(p)
                     p.Team.Name
                 )
             )
-
     end
-
 
     local isKillerTeam =
-        teamName:find(
-            "killer",
-            1,
-            true
-        )
-        or
-        teamName:find(
-            "murderer",
-            1,
-            true
-        )
-        or
-        teamName:find(
-            "slasher",
-            1,
-            true
-        )
-
+        teamName:find("killer", 1, true)
+        or teamName:find("murderer", 1, true)
+        or teamName:find("slasher", 1, true)
 
     if not isKillerTeam then
-
-        return false
-
+        return nil
     end
-
-
-    -- =====================================================
-    -- SELECTED KILLER
-    -- =====================================================
 
     local selectedKiller =
         getGameValue(
             p,
             "SelectedKiller"
         )
-
 
     if selectedKiller ~= nil then
 
@@ -889,46 +955,41 @@ local function isStalkerKiller(p)
                 )
             )
 
+        if killerName == "masked" then
+            return "Masked"
+        end
 
         if killerName == "stalker"
             or killerName == "slasher" then
-
-            return true
-
+            return "Stalker"
         end
 
-
-        return false
-
+        return nil
     end
 
-
-    return false
-
+    return nil
 end
 
 
 -- =========================================================
--- ПОИСК STALKER
+-- ПОИСК KILLER
 -- =========================================================
 
-local function getStalker()
+local function getKiller()
 
     for _, p in ipairs(
         Players:GetPlayers()
     ) do
 
-        if isStalkerKiller(p) then
+        local killerType =
+            getKillerType(p)
 
-            return p
-
+        if killerType then
+            return p, killerType
         end
-
     end
 
-
-    return nil
-
+    return nil, nil
 end
 
 
@@ -1002,14 +1063,14 @@ end
 -- GET ZONE
 -- =========================================================
 
-local function getZoneForDistance(dist)
+local function getZoneForDistance(dist, zoneList)
 
     if not dist then
         return nil
     end
 
 
-    for _, zone in ipairs(zones) do
+    for _, zone in ipairs(zoneList) do
 
         if dist >= zone.minDist
             and dist < zone.maxDist then
@@ -1032,7 +1093,6 @@ end
 
 local elapsed = 0
 
-
 RunService.Heartbeat:Connect(
     function(deltaTime)
 
@@ -1040,167 +1100,116 @@ RunService.Heartbeat:Connect(
             elapsed
             + deltaTime
 
-
         if elapsed <
             UPDATE_INTERVAL then
-
             return
-
         end
-
 
         elapsed = 0
 
-
-        -- =================================================
-        -- ГЛУШИМ ОРИГИНАЛЬНУЮ МУЗЫКУ KILLER
-        -- =================================================
-        --
-        -- Делаем это постоянно.
-        -- Поэтому даже если игра снова создаст
-        -- ChaseMusic во время погони, он сразу исчезнет.
-        -- =================================================
-
         blockKillerMusic()
 
+        -- Ищем Stalker или Masked.
+        local killer, killerType =
+            getKiller()
 
-        -- =================================================
-        -- ИЩЕМ STALKER
-        -- =================================================
-
-        local stalker =
-            getStalker()
-
-
-        -- Stalker нет.
-        if not stalker then
+        if not killer then
 
             if currentSound then
-
                 stopCurrentSound()
-
             end
 
-
             currentTarget = nil
-
+            currentKillerType = nil
 
             return
-
         end
 
+        local activeZones
 
-        -- =================================================
-        -- ДИСТАНЦИЯ
-        -- =================================================
+        if killerType == "Masked" then
+            activeZones = maskedZones
+        else
+            activeZones = zones
+        end
 
         local dist =
             getDistance(
-                stalker
+                killer
             )
-
 
         if dist == nil then
 
             if currentSound then
-
                 stopCurrentSound()
-
             end
 
-
             currentTarget = nil
-
+            currentKillerType = nil
 
             return
-
         end
 
-
-        -- =================================================
-        -- STALKER СМЕНИЛСЯ
-        -- =================================================
-
-        if stalker ~=
-            currentTarget then
+        -- Killer или его тип сменился.
+        if killer ~= currentTarget
+            or killerType ~= currentKillerType then
 
             stopCurrentSound()
 
-
-            currentTarget =
-                stalker
-
+            currentTarget = killer
+            currentKillerType = killerType
 
             print(
-                "🎯 Найден Stalker:",
-                stalker.Name
+                "🎯 Найден " .. killerType .. ":",
+                killer.Name
             )
-
         end
-
-
-        -- =================================================
-        -- ВЫБОР МУЗЫКИ ПО ДИСТАНЦИИ
-        -- =================================================
 
         local targetZone =
             getZoneForDistance(
-                dist
+                dist,
+                activeZones
             )
-
 
         local targetFile =
             targetZone
             and targetZone.file
             or nil
 
-
-        -- =================================================
-        -- PLAY
-        -- =================================================
-
         if targetFile then
 
-            if targetFile ~=
-                currentFile then
+            if targetFile ~= currentFile then
 
                 print(
-                    "📏 Дистанция:",
+                    "📏 " .. killerType .. " дистанция:",
                     math.floor(dist),
                     "m"
                 )
-
 
                 print(
                     "🎵 Зона:",
                     targetZone.name
                 )
 
-
                 playSoundFile(
                     targetFile
                 )
-
             end
 
         else
 
-            -- Stalker дальше 96 метров.
+            -- Для обоих киллеров максимальная дистанция = 96m.
             if currentSound then
 
                 print(
-                    "🔇 Stalker далеко:",
+                    "🔇 " .. killerType .. " далеко:",
                     math.floor(dist),
                     "m"
                 )
 
-
                 stopCurrentSound()
-
             end
-
         end
-
     end
 )
 
@@ -1211,7 +1220,7 @@ RunService.Heartbeat:Connect(
 
 print("")
 print("========================================")
-print("✅ STALKER AUDIO ЗАПУЩЕН")
+print("✅ STALKER + MASKED AUDIO ЗАПУЩЕН")
 print("🚫 KILLER CHASE MUSIC ЗАБЛОКИРОВАНА")
-print("🎵 Ожидание Stalker...")
+print("🎵 Ожидание Stalker / Masked...")
 print("========================================")
