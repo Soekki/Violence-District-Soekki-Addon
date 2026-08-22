@@ -1,3 +1,4 @@
+print("🔥 STALKER AUDIO VERSION: WAV-TEST-001")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
