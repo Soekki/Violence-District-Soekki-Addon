@@ -4,70 +4,95 @@ local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 
 -- ВАШИ ССЫЛКИ
-local zones = {
-    {name = "32M_MM",   soundUrl = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/Sounds/Stalker/32m.mp3", minDist = 72, maxDist = 96},
-    {name = "24M_MM",   soundUrl = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/Sounds/Stalker/24m.mp3", minDist = 36, maxDist = 72},
-    {name = "12M_MM",   soundUrl = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/Sounds/Stalker/12m.mp3", minDist = 24, maxDist = 36},
-    {name = "8M_MM",    soundUrl = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/Sounds/Stalker/8m.mp3", minDist = 15, maxDist = 24},
-    {name = "CHASE_MM", soundUrl = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/Sounds/Stalker/chase_m.mp3", minDist = 0,  maxDist = 15},
+local zoneConfigs = {
+    {name = "32M_MM",   url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/Sounds/Stalker/32m.mp3", minDist = 72, maxDist = 96},
+    {name = "24M_MM",   url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/Sounds/Stalker/24m.mp3", minDist = 36, maxDist = 72},
+    {name = "12M_MM",   url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/Sounds/Stalker/12m.mp3", minDist = 24, maxDist = 36},
+    {name = "8M_MM",    url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/Sounds/Stalker/8m.mp3", minDist = 15, maxDist = 24},
+    {name = "CHASE_MM", url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/Sounds/Stalker/chase_m.mp3", minDist = 0,  maxDist = 15},
 }
 
+-- СКАЧИВАЕМ ВСЕ ПЕСНИ ПРИ ЗАПУСКЕ
+print("⏳ Загрузка песен...")
+local zones = {}
+
+for i, config in ipairs(zoneConfigs) do
+    local filename = "stalker_" .. i .. ".mp3"
+    local success, data = pcall(function()
+        return game:HttpGet(config.url, true)
+    end
+    
+    if success and data then
+        pcall(function()
+            writefile(filename, data)
+        end)
+        zones[#zones + 1] = {
+            name = config.name,
+            file = filename,
+            minDist = config.minDist,
+            maxDist = config.maxDist
+        }
+        print("✅ Загружено:", config.name, "->", filename)
+    else
+        print("❌ Ошибка загрузки:", config.url)
+        -- Если не скачалось, используем заглушку (тишину)
+        zones[#zones + 1] = {
+            name = config.name,
+            file = nil,
+            minDist = config.minDist,
+            maxDist = config.maxDist
+        }
+    end
+end
+
+print("✅ Все песни загружены!")
+
+-- Переменные для воспроизведения
 local currentSound = nil
-local currentUrl = nil
+local currentFile = nil
 local currentTarget = nil
 
--- Функция воспроизведения с защитой
-local function playSound(url)
+-- Функция воспроизведения локального файла
+local function playSoundFile(filename)
+    -- Останавливаем текущий звук
     if currentSound then
         pcall(function() currentSound:Stop() end)
         currentSound = nil
     end
     
-    if not url then return end
+    if not filename then 
+        currentFile = nil
+        return 
+    end
     
-    -- Пробуем разные варианты syn.sound
-    local sound = nil
-    local success = false
-    
-    -- Вариант 1: syn.sound(url, "http")
-    success, sound = pcall(function()
-        return syn.sound(url, "http")
+    -- Проверяем, существует ли файл
+    local fileExists = false
+    pcall(function()
+        fileExists = syn.sound(filename) ~= nil
     end)
     
-    -- Вариант 2: syn.sound({Url = url, Type = "http"})
-    if not success or not sound then
-        success, sound = pcall(function()
-            return syn.sound({Url = url, Type = "http"})
-        end)
+    if not fileExists then
+        print("❌ Файл не найден:", filename)
+        return
     end
     
-    -- Вариант 3: syn.sound(url) без второго аргумента
-    if not success or not sound then
-        success, sound = pcall(function()
-            return syn.sound(url)
-        end)
-    end
-    
-    if success and sound then
+    -- Создаем звук из локального файла
+    local sound = syn.sound(filename)
+    if sound then
         currentSound = sound
-        currentUrl = url
+        currentFile = filename
         pcall(function()
             sound:Play()
             sound.Looped = true
             sound.Volume = 0.5
         end)
-        print("🎵 Играет:", url)
-        return true
+        print("🎵 Играет:", filename)
     else
-        print("❌ Не удалось загрузить звук:", url)
-        if not success then
-            print("Ошибка:", sound)
-        end
-        return false
+        print("❌ Не удалось создать звук из:", filename)
     end
 end
 
--- Проверка киллера (исправлена)
+-- Остальные функции
 local function getGameValue(obj, name)
     if not obj then return nil end
     local attr = obj:GetAttribute(name)
@@ -84,7 +109,6 @@ local function isStalkerKiller(p)
     if not p or p == player then return false end
     
     local teamName = (p.Team and p.Team.Name:lower()) or ""
-    -- Проверяем, является ли игрок убийцей (любое имя команды)
     if not teamName:find("killer", 1, true) and not teamName:find("murderer", 1, true) and not teamName:find("slasher", 1, true) then
         return false
     end
@@ -135,7 +159,7 @@ RunService.Heartbeat:Connect(function()
         if currentSound then
             pcall(function() currentSound:Stop() end)
             currentSound = nil
-            currentUrl = nil
+            currentFile = nil
         end
         currentTarget = nil
         return
@@ -146,35 +170,35 @@ RunService.Heartbeat:Connect(function()
         if currentSound then
             pcall(function() currentSound:Stop() end)
             currentSound = nil
-            currentUrl = nil
+            currentFile = nil
         end
         currentTarget = nil
         return
     end
     
     local targetZone = getZoneForDistance(dist)
-    local targetUrl = targetZone and targetZone.soundUrl or nil
+    local targetFile = targetZone and targetZone.file or nil
     
     if stalker ~= currentTarget then
         if currentSound then
             pcall(function() currentSound:Stop() end)
             currentSound = nil
-            currentUrl = nil
+            currentFile = nil
         end
         currentTarget = stalker
     end
     
-    if targetUrl then
-        if targetUrl ~= currentUrl then
-            playSound(targetUrl)
+    if targetFile then
+        if targetFile ~= currentFile then
+            playSoundFile(targetFile)
         end
     else
         if currentSound then
             pcall(function() currentSound:Stop() end)
             currentSound = nil
-            currentUrl = nil
+            currentFile = nil
         end
     end
 end)
 
-print("✅ Скрипт Stalker Audio загружен!")
+print("✅ Скрипт Stalker Audio загружен! Ожидайте киллера...")
