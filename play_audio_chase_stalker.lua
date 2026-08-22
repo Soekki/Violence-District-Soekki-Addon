@@ -1,16 +1,31 @@
+-- =========================================================
+-- STALKER CUSTOM CHASE MUSIC
+-- =========================================================
+--
+-- 1. Блокирует стандартную музыку Killer (ChaseMusic)
+-- 2. Находит Stalker
+-- 3. Проигрывает собственные WAV по дистанции
+--
+-- Дистанции:
+-- 0-15m   -> chase_m.wav
+-- 15-24m  -> 8m.wav
+-- 24-36m  -> 12m.wav
+-- 36-72m  -> 24m.wav
+-- 72-96m  -> 32m.wav
+-- >96m    -> тишина
+-- =========================================================
+
+
+-- =========================================================
+-- SERVICES
+-- =========================================================
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
 
 local player = Players.LocalPlayer
 
--- =========================================================
--- STALKER AUDIO / XENO
--- =========================================================
-
-print("========================================")
-print("   STALKER AUDIO / XENO")
-print("========================================")
 
 -- =========================================================
 -- НАСТРОЙКИ
@@ -18,17 +33,16 @@ print("========================================")
 
 local SOUND_VOLUME = 0.5
 
--- Как часто проверять расстояние до Stalker.
--- 0.05 = примерно 20 проверок в секунду.
 local UPDATE_INTERVAL = 0.05
 
--- Версия имён локальных файлов.
--- Благодаря этому старые битые stalker_1.wav и т.п.
--- не будут использоваться.
+-- Версия кэша.
+-- Используется новое имя, чтобы старые битые WAV
+-- не использовались повторно.
 local CACHE_VERSION = "v2"
 
+
 -- =========================================================
--- ЗВУКИ
+-- STALKER WAV
 -- =========================================================
 
 local zoneConfigs = {
@@ -36,8 +50,6 @@ local zoneConfigs = {
     {
         name = "32M_MM",
 
-        -- ВАЖНО:
-        -- здесь обязательно должен быть /main/
         url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/main/Sounds/Stalker/32m.wav",
 
         minDist = 72,
@@ -81,9 +93,88 @@ local zoneConfigs = {
     }
 }
 
+
 -- =========================================================
--- ПРОВЕРКА API XENO
+-- БЛОКИРОВКА ОРИГИНАЛЬНОЙ МУЗЫКИ KILLER
 -- =========================================================
+--
+-- В игре стандартный звук называется "ChaseMusic".
+-- Мы удаляем именно его.
+--
+-- Наш собственный звук называется "StalkerAudio",
+-- поэтому он не затрагивается.
+-- =========================================================
+
+local function blockKillerMusic()
+
+    for _, obj in ipairs(SoundService:GetChildren()) do
+
+        if obj:IsA("Sound")
+            and obj.Name == "ChaseMusic" then
+
+            pcall(function()
+                obj.Volume = 0
+                obj:Stop()
+                obj:Destroy()
+            end)
+
+        end
+    end
+end
+
+
+-- =========================================================
+-- ОТСЛЕЖИВАНИЕ СОЗДАНИЯ ChaseMusic
+-- =========================================================
+--
+-- Игра может создать ChaseMusic уже после запуска
+-- нашего скрипта.
+--
+-- Поэтому следим за SoundService.ChildAdded.
+-- =========================================================
+
+SoundService.ChildAdded:Connect(function(obj)
+
+    if not obj:IsA("Sound") then
+        return
+    end
+
+    if obj.Name ~= "ChaseMusic" then
+        return
+    end
+
+    task.defer(function()
+
+        if not obj then
+            return
+        end
+
+        if not obj.Parent then
+            return
+        end
+
+        pcall(function()
+            obj.Volume = 0
+            obj:Stop()
+            obj:Destroy()
+        end)
+
+    end)
+
+end)
+
+
+-- Удаляем ChaseMusic, если он уже существует.
+blockKillerMusic()
+
+
+-- =========================================================
+-- ПРОВЕРКА XENO API
+-- =========================================================
+
+print("========================================")
+print("   STALKER AUDIO / XENO")
+print("========================================")
 
 print("writefile:", type(writefile))
 print("isfile:", type(isfile))
@@ -91,19 +182,24 @@ print("readfile:", type(readfile))
 print("getcustomasset:", type(getcustomasset))
 print("getsynasset:", type(getsynasset))
 
+
 if type(writefile) ~= "function" then
+
     warn("❌ writefile недоступен!")
-    warn("❌ Xeno не сможет сохранить WAV-файлы.")
+    warn("❌ Невозможно сохранить WAV.")
+
     return
 end
+
 
 if type(getcustomasset) ~= "function"
     and type(getsynasset) ~= "function" then
 
-    warn("❌ Нет getcustomasset/getsynasset!")
-    warn("❌ Xeno не сможет загрузить локальные звуки.")
+    warn("❌ getcustomasset/getsynasset недоступен!")
+
     return
 end
+
 
 -- =========================================================
 -- ПРОВЕРКА WAV
@@ -115,15 +211,11 @@ local function isValidWav(data)
         return false
     end
 
-    -- WAV должен быть минимум 12 байт.
     if #data < 12 then
         return false
     end
 
-    -- WAV начинается с RIFF
     local riff = string.sub(data, 1, 4)
-
-    -- В позиции 9-12 должно находиться WAVE
     local wave = string.sub(data, 9, 12)
 
     if riff ~= "RIFF" then
@@ -137,52 +229,62 @@ local function isValidWav(data)
     return true
 end
 
+
 -- =========================================================
--- ПОЛУЧЕНИЕ LOCAL ASSET
+-- GET LOCAL ASSET
 -- =========================================================
 
 local function getLocalAsset(filename)
 
-    -- Основной вариант Xeno
     if type(getcustomasset) == "function" then
 
         local ok, result = pcall(function()
+
             return getcustomasset(filename)
+
         end)
 
         if ok and result then
             return result
         end
-
     end
 
-    -- Запасной вариант
+
     if type(getsynasset) == "function" then
 
         local ok, result = pcall(function()
+
             return getsynasset(filename)
+
         end)
 
         if ok and result then
             return result
         end
-
     end
+
 
     return nil
 end
 
+
 -- =========================================================
--- ПОЛУЧЕНИЕ ИМЕНИ КЭШ-ФАЙЛА
+-- CACHE FILENAME
 -- =========================================================
 
-local function getCacheFilename(index, config)
+local function getCacheFilename(index)
 
-    return "stalker_" .. CACHE_VERSION .. "_" .. index .. ".wav"
+    return "stalker_"
+        .. CACHE_VERSION
+        .. "_"
+        .. index
+        .. ".wav"
+
 end
 
+
 -- =========================================================
--- ПРОВЕРКА УЖЕ СКАЧАННОГО ФАЙЛА
+-- ПРОВЕРКА КЭША
 -- =========================================================
 
 local function isCachedWavValid(filename)
@@ -191,38 +293,46 @@ local function isCachedWavValid(filename)
         return false
     end
 
+
     local exists = false
 
     local ok = pcall(function()
+
         exists = isfile(filename)
+
     end)
+
 
     if not ok or not exists then
         return false
     end
 
-    -- Если readfile доступен — проверяем содержимое.
+
     if type(readfile) == "function" then
 
         local readOk, data = pcall(function()
+
             return readfile(filename)
+
         end)
+
 
         if not readOk then
             return false
         end
 
+
         return isValidWav(data)
+
     end
 
-    -- Если readfile нет, файл считаем существующим.
-    -- Но на первом запуске новый CACHE_VERSION
-    -- всё равно заставит скачать новый файл.
+
     return true
 end
 
+
 -- =========================================================
--- СКАЧИВАНИЕ WAV
+-- DOWNLOAD WAV
 -- =========================================================
 
 local function downloadSound(config, filename)
@@ -231,24 +341,30 @@ local function downloadSound(config, filename)
     print("⬇️ Скачивание:", config.name)
     print("🔗 URL:", config.url)
 
+
     local success, data = pcall(function()
+
         return game:HttpGet(config.url)
+
     end)
+
 
     if not success then
 
-        warn("❌ HttpGet завершился ошибкой:")
+        warn("❌ HttpGet ошибка:")
         warn(tostring(data))
 
         return false
     end
 
+
     if type(data) ~= "string" then
 
-        warn("❌ GitHub вернул данные неизвестного типа.")
+        warn("❌ GitHub вернул неизвестный тип данных.")
 
         return false
     end
+
 
     if #data == 0 then
 
@@ -257,27 +373,29 @@ local function downloadSound(config, filename)
         return false
     end
 
-    -- Очень важная проверка.
-    -- Без неё HTML-страница GitHub может сохраниться как .wav.
+
+    -- Проверяем настоящий WAV,
+    -- чтобы HTML/ошибка GitHub не сохранились
+    -- под расширением .wav.
     if not isValidWav(data) then
 
-        warn("❌ Ответ НЕ является корректным WAV!")
-        warn("❌ Файл не будет сохранён.")
-        warn("❌ Первые 32 байта ответа:")
-
-        local preview = string.sub(data, 1, 32)
-
-        warn(preview)
+        warn("❌ Ответ НЕ является WAV!")
+        warn("❌ Файл не сохранён.")
 
         return false
     end
 
+
     print("✅ WAV проверен")
     print("📦 Размер:", #data, "bytes")
 
+
     local writeSuccess, writeError = pcall(function()
+
         writefile(filename, data)
+
     end)
+
 
     if not writeSuccess then
 
@@ -287,28 +405,35 @@ local function downloadSound(config, filename)
         return false
     end
 
-    -- Проверяем, что файл реально записался.
+
+    -- Дополнительная проверка после записи.
     if type(readfile) == "function" then
 
         local checkOk, savedData = pcall(function()
+
             return readfile(filename)
+
         end)
 
-        if not checkOk or not isValidWav(savedData) then
 
-            warn("❌ После записи файл оказался повреждённым!")
+        if not checkOk
+            or not isValidWav(savedData) then
+
+            warn("❌ Записанный файл повреждён!")
 
             return false
         end
     end
+
 
     print("✅ Сохранено:", filename)
 
     return true
 end
 
+
 -- =========================================================
--- ЗАГРУЗКА ВСЕХ ЗВУКОВ
+-- ЗАГРУЗКА ВСЕХ STALKER WAV
 -- =========================================================
 
 print("")
@@ -316,41 +441,59 @@ print("========================================")
 print("   ПРОВЕРКА STALKER WAV")
 print("========================================")
 
+
 local zones = {}
+
 
 for i, config in ipairs(zoneConfigs) do
 
-    local filename = getCacheFilename(i, config)
+    local filename =
+        getCacheFilename(i)
+
 
     local downloaded = false
 
-    -- Проверяем существующий файл.
+
     if isCachedWavValid(filename) then
 
-        print("📁 Уже есть корректный WAV:", filename)
+        print(
+            "📁 Уже есть корректный WAV:",
+            filename
+        )
 
         downloaded = true
 
     else
 
-        -- Если старого файла нет или он битый,
-        -- скачиваем заново.
-        print("🔄 Файл отсутствует или повреждён:", filename)
+        print(
+            "🔄 Файл отсутствует или повреждён:",
+            filename
+        )
 
-        downloaded = downloadSound(config, filename)
+        downloaded =
+            downloadSound(
+                config,
+                filename
+            )
 
     end
+
 
     zones[#zones + 1] = {
 
         name = config.name,
 
-        file = downloaded and filename or nil,
+        file =
+            downloaded
+            and filename
+            or nil,
 
         minDist = config.minDist,
 
         maxDist = config.maxDist
+
     }
+
 
     if downloaded then
 
@@ -358,7 +501,10 @@ for i, config in ipairs(zoneConfigs) do
             "✅",
             config.name,
             "|",
-            config.minDist .. "-" .. config.maxDist .. "m",
+            config.minDist
+                .. "-"
+                .. config.maxDist
+                .. "m",
             "|",
             filename
         )
@@ -372,12 +518,15 @@ for i, config in ipairs(zoneConfigs) do
         )
 
     end
+
 end
+
 
 print("")
 print("========================================")
 print("   ЗАГРУЗКА ЗАВЕРШЕНА")
 print("========================================")
+
 
 for _, zone in ipairs(zones) do
 
@@ -399,18 +548,21 @@ for _, zone in ipairs(zones) do
         )
 
     end
+
 end
 
+
 -- =========================================================
--- ПЕРЕМЕННЫЕ ЗВУКА
+-- ТЕКУЩИЙ STALKER SOUND
 -- =========================================================
 
 local currentSound = nil
 local currentFile = nil
 local currentTarget = nil
 
+
 -- =========================================================
--- ОСТАНОВКА ТЕКУЩЕГО ЗВУКА
+-- STOP CURRENT SOUND
 -- =========================================================
 
 local function stopCurrentSound()
@@ -418,121 +570,167 @@ local function stopCurrentSound()
     if currentSound then
 
         pcall(function()
+
             currentSound:Stop()
+
         end)
+
 
         pcall(function()
+
             currentSound:Destroy()
+
         end)
 
+
         currentSound = nil
+
     end
 
+
     currentFile = nil
+
 end
 
+
 -- =========================================================
--- ВОСПРОИЗВЕДЕНИЕ ЛОКАЛЬНОГО WAV
+-- PLAY STALKER SOUND
 -- =========================================================
 
 local function playSoundFile(filename)
 
     if not filename then
+
         stopCurrentSound()
+
         return
+
     end
 
-    -- Если уже играет нужный файл,
-    -- ничего не делаем.
+
+    -- Уже играет нужный звук.
     if currentFile == filename
         and currentSound then
 
         return
+
     end
 
-    -- Останавливаем предыдущий звук.
+
+    -- Останавливаем предыдущую дистанционную музыку.
     stopCurrentSound()
+
 
     print("")
     print("🔊 Загружаем:", filename)
 
-    local assetUrl = getLocalAsset(filename)
+
+    local assetUrl =
+        getLocalAsset(filename)
+
 
     if not assetUrl then
 
         warn(
-            "❌ getcustomasset/getsynasset не смог загрузить:",
+            "❌ Не удалось загрузить:",
             filename
         )
 
         return
+
     end
 
-    print("🔗 Asset:", assetUrl)
 
-    -- =====================================================
-    -- СОЗДАНИЕ SOUND
-    -- =====================================================
+    print(
+        "🔗 Asset:",
+        assetUrl
+    )
 
-    local sound = Instance.new("Sound")
 
-    sound.Name = "StalkerAudio"
+    local sound =
+        Instance.new("Sound")
 
-    sound.SoundId = assetUrl
 
-    sound.Volume = SOUND_VOLUME
+    sound.Name =
+        "StalkerAudio"
 
-    sound.Looped = true
+    sound.SoundId =
+        assetUrl
 
-    sound.Parent = SoundService
+    sound.Volume =
+        SOUND_VOLUME
 
-    currentSound = sound
-    currentFile = filename
+    sound.Looped =
+        true
+
+    sound.Parent =
+        SoundService
+
+
+    currentSound =
+        sound
+
+    currentFile =
+        filename
+
 
     -- =====================================================
     -- PRELOAD
     -- =====================================================
 
-    local preloadOk, preloadError = pcall(function()
+    local preloadOk,
+        preloadError =
+        pcall(function()
 
-        local ContentProvider =
-            game:GetService("ContentProvider")
+            local ContentProvider =
+                game:GetService(
+                    "ContentProvider"
+                )
 
-        ContentProvider:PreloadAsync({
-            sound
-        })
+            ContentProvider:PreloadAsync({
+                sound
+            })
 
-    end)
+        end)
+
 
     if not preloadOk then
 
         warn(
-            "⚠️ PreloadAsync ошибка:",
+            "⚠️ PreloadAsync:",
             tostring(preloadError)
         )
 
     end
 
+
     -- =====================================================
     -- PLAY
     -- =====================================================
 
-    local playOk, playError = pcall(function()
+    local playOk,
+        playError =
+        pcall(function()
 
-        sound:Play()
+            sound:Play()
 
-    end)
+        end)
+
 
     if not playOk then
 
         warn(
-            "❌ Ошибка Play():",
+            "❌ Play() ошибка:",
             tostring(playError)
         )
 
+
         pcall(function()
+
             sound:Destroy()
+
         end)
+
 
         currentSound = nil
         currentFile = nil
@@ -540,9 +738,14 @@ local function playSoundFile(filename)
         return
     end
 
-    print("🎵 Играет:", filename)
+
+    print(
+        "🎵 Играет:",
+        filename
+    )
 
 end
+
 
 -- =========================================================
 -- ПОЛУЧЕНИЕ ATTRIBUTE / VALUE
@@ -554,49 +757,71 @@ local function getGameValue(obj, name)
         return nil
     end
 
+
     -- Attribute
     local attr
 
-    local attrOk = pcall(function()
 
-        attr = obj:GetAttribute(name)
+    local attrOk =
+        pcall(function()
 
-    end)
+            attr =
+                obj:GetAttribute(name)
 
-    if attrOk and attr ~= nil then
+        end)
+
+
+    if attrOk
+        and attr ~= nil then
 
         return attr
+
     end
 
+
     -- Value object
-    local child = obj:FindFirstChild(name)
+    local child =
+        obj:FindFirstChild(name)
+
 
     if child then
 
-        local ok, value = pcall(function()
+        local ok,
+            value =
+            pcall(function()
 
-            return child.Value
+                return child.Value
 
-        end)
+            end)
+
 
         if ok then
 
             return value
+
         end
+
     end
 
+
     return nil
+
 end
 
+
 -- =========================================================
--- ПРОВЕРКА: ЯВЛЯЕТСЯ ЛИ ИГРОК STALKER
+-- ПРОВЕРКА STALKER
 -- =========================================================
 
 local function isStalkerKiller(p)
 
-    if not p or p == player then
+    if not p
+        or p == player then
+
         return false
+
     end
+
 
     -- =====================================================
     -- TEAM
@@ -604,49 +829,84 @@ local function isStalkerKiller(p)
 
     local teamName = ""
 
+
     if p.Team then
 
-        teamName = string.lower(
-            tostring(p.Team.Name)
-        )
+        teamName =
+            string.lower(
+                tostring(
+                    p.Team.Name
+                )
+            )
 
     end
 
+
     local isKillerTeam =
-        teamName:find("killer", 1, true)
-        or teamName:find("murderer", 1, true)
-        or teamName:find("slasher", 1, true)
+        teamName:find(
+            "killer",
+            1,
+            true
+        )
+        or
+        teamName:find(
+            "murderer",
+            1,
+            true
+        )
+        or
+        teamName:find(
+            "slasher",
+            1,
+            true
+        )
+
 
     if not isKillerTeam then
 
         return false
+
     end
+
 
     -- =====================================================
     -- SELECTED KILLER
     -- =====================================================
 
     local selectedKiller =
-        getGameValue(p, "SelectedKiller")
+        getGameValue(
+            p,
+            "SelectedKiller"
+        )
+
 
     if selectedKiller ~= nil then
 
         local killerName =
             string.lower(
-                tostring(selectedKiller)
+                tostring(
+                    selectedKiller
+                )
             )
+
 
         if killerName == "stalker"
             or killerName == "slasher" then
 
             return true
+
         end
 
+
         return false
+
     end
 
+
     return false
+
 end
+
 
 -- =========================================================
 -- ПОИСК STALKER
@@ -663,10 +923,14 @@ local function getStalker()
             return p
 
         end
+
     end
 
+
     return nil
+
 end
+
 
 -- =========================================================
 -- ROOT PART
@@ -678,13 +942,16 @@ local function getRoot(character)
         return nil
     end
 
+
     return character:FindFirstChild(
         "HumanoidRootPart"
     )
+
 end
 
+
 -- =========================================================
--- ПОЛУЧЕНИЕ ДИСТАНЦИИ
+-- DISTANCE
 -- =========================================================
 
 local function getDistance(target)
@@ -693,35 +960,46 @@ local function getDistance(target)
         return nil
     end
 
+
     local character =
         player.Character
+
 
     if not character then
         return nil
     end
 
+
     local myRoot =
         getRoot(character)
+
 
     if not myRoot then
         return nil
     end
 
+
     local targetRoot =
-        getRoot(target.Character)
+        getRoot(
+            target.Character
+        )
+
 
     if not targetRoot then
         return nil
     end
 
+
     return (
         myRoot.Position
         - targetRoot.Position
     ).Magnitude
+
 end
 
+
 -- =========================================================
--- ВЫБОР ЗОНЫ
+-- GET ZONE
 -- =========================================================
 
 local function getZoneForDistance(dist)
@@ -729,6 +1007,7 @@ local function getZoneForDistance(dist)
     if not dist then
         return nil
     end
+
 
     for _, zone in ipairs(zones) do
 
@@ -738,10 +1017,14 @@ local function getZoneForDistance(dist)
             return zone
 
         end
+
     end
 
+
     return nil
+
 end
+
 
 -- =========================================================
 -- ОСНОВНОЙ ЦИКЛ
@@ -749,138 +1032,178 @@ end
 
 local elapsed = 0
 
-RunService.Heartbeat:Connect(function(deltaTime)
 
-    elapsed = elapsed + deltaTime
+RunService.Heartbeat:Connect(
+    function(deltaTime)
 
-    -- Не нужно проверять всё 60+ раз в секунду.
-    if elapsed < UPDATE_INTERVAL then
-        return
-    end
+        elapsed =
+            elapsed
+            + deltaTime
 
-    elapsed = 0
 
-    -- =====================================================
-    -- ПОИСК STALKER
-    -- =====================================================
+        if elapsed <
+            UPDATE_INTERVAL then
 
-    local stalker = getStalker()
-
-    -- Нет Stalker
-    if not stalker then
-
-        if currentSound then
-            stopCurrentSound()
-        end
-
-        currentTarget = nil
-
-        return
-    end
-
-    -- =====================================================
-    -- ПОЛУЧЕНИЕ ДИСТАНЦИИ
-    -- =====================================================
-
-    local dist =
-        getDistance(stalker)
-
-    if dist == nil then
-
-        if currentSound then
-            stopCurrentSound()
-        end
-
-        currentTarget = nil
-
-        return
-    end
-
-    -- =====================================================
-    -- ЕСЛИ STALKER СМЕНИЛСЯ
-    -- =====================================================
-
-    if stalker ~= currentTarget then
-
-        stopCurrentSound()
-
-        currentTarget = stalker
-
-        print(
-            "🎯 Найден Stalker:",
-            stalker.Name
-        )
-
-    end
-
-    -- =====================================================
-    -- ВЫБОР ЗОНЫ
-    -- =====================================================
-
-    local targetZone =
-        getZoneForDistance(dist)
-
-    local targetFile =
-        targetZone
-        and targetZone.file
-        or nil
-
-    -- =====================================================
-    -- DEBUG
-    -- =====================================================
-
-    -- Если хочешь видеть дистанцию,
-    -- раскомментируй:
-    --
-    -- print(
-    --     "Stalker:",
-    --     stalker.Name,
-    --     "Distance:",
-    --     math.floor(dist),
-    --     "m"
-    -- )
-
-    -- =====================================================
-    -- ПРОИГРЫВАНИЕ
-    -- =====================================================
-
-    if targetFile then
-
-        if targetFile ~= currentFile then
-
-            print(
-                "📏 Дистанция:",
-                math.floor(dist),
-                "m"
-            )
-
-            print(
-                "🎵 Зона:",
-                targetZone.name
-            )
-
-            playSoundFile(targetFile)
+            return
 
         end
 
-    else
 
-        -- Дальше 96 метров
-        -- или звук для зоны отсутствует.
-        if currentSound then
+        elapsed = 0
 
-            print(
-                "🔇 Stalker слишком далеко:",
-                math.floor(dist),
-                "m"
+
+        -- =================================================
+        -- ГЛУШИМ ОРИГИНАЛЬНУЮ МУЗЫКУ KILLER
+        -- =================================================
+        --
+        -- Делаем это постоянно.
+        -- Поэтому даже если игра снова создаст
+        -- ChaseMusic во время погони, он сразу исчезнет.
+        -- =================================================
+
+        blockKillerMusic()
+
+
+        -- =================================================
+        -- ИЩЕМ STALKER
+        -- =================================================
+
+        local stalker =
+            getStalker()
+
+
+        -- Stalker нет.
+        if not stalker then
+
+            if currentSound then
+
+                stopCurrentSound()
+
+            end
+
+
+            currentTarget = nil
+
+
+            return
+
+        end
+
+
+        -- =================================================
+        -- ДИСТАНЦИЯ
+        -- =================================================
+
+        local dist =
+            getDistance(
+                stalker
             )
+
+
+        if dist == nil then
+
+            if currentSound then
+
+                stopCurrentSound()
+
+            end
+
+
+            currentTarget = nil
+
+
+            return
+
+        end
+
+
+        -- =================================================
+        -- STALKER СМЕНИЛСЯ
+        -- =================================================
+
+        if stalker ~=
+            currentTarget then
 
             stopCurrentSound()
 
-        end
-    end
 
-end)
+            currentTarget =
+                stalker
+
+
+            print(
+                "🎯 Найден Stalker:",
+                stalker.Name
+            )
+
+        end
+
+
+        -- =================================================
+        -- ВЫБОР МУЗЫКИ ПО ДИСТАНЦИИ
+        -- =================================================
+
+        local targetZone =
+            getZoneForDistance(
+                dist
+            )
+
+
+        local targetFile =
+            targetZone
+            and targetZone.file
+            or nil
+
+
+        -- =================================================
+        -- PLAY
+        -- =================================================
+
+        if targetFile then
+
+            if targetFile ~=
+                currentFile then
+
+                print(
+                    "📏 Дистанция:",
+                    math.floor(dist),
+                    "m"
+                )
+
+
+                print(
+                    "🎵 Зона:",
+                    targetZone.name
+                )
+
+
+                playSoundFile(
+                    targetFile
+                )
+
+            end
+
+        else
+
+            -- Stalker дальше 96 метров.
+            if currentSound then
+
+                print(
+                    "🔇 Stalker далеко:",
+                    math.floor(dist),
+                    "m"
+                )
+
+
+                stopCurrentSound()
+
+            end
+
+        end
+
+    end
+)
+
 
 -- =========================================================
 -- ГОТОВО
@@ -889,5 +1212,6 @@ end)
 print("")
 print("========================================")
 print("✅ STALKER AUDIO ЗАПУЩЕН")
+print("🚫 KILLER CHASE MUSIC ЗАБЛОКИРОВАНА")
 print("🎵 Ожидание Stalker...")
 print("========================================")
