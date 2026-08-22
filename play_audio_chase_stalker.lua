@@ -8,38 +8,40 @@ local player = Players.LocalPlayer
 -- НАСТРОЙКИ
 -- =========================================================
 
+-- mp3
+
 local zoneConfigs = {
     {
         name = "32M_MM",
-        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/Sounds/Stalker/32m.mp3",
+        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/Sounds/Stalker/32m.wav",
         minDist = 72,
         maxDist = 96
     },
 
     {
         name = "24M_MM",
-        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/Sounds/Stalker/24m.mp3",
+        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/Sounds/Stalker/24m.wav",
         minDist = 36,
         maxDist = 72
     },
 
     {
         name = "12M_MM",
-        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/Sounds/Stalker/12m.mp3",
+        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/Sounds/Stalker/12m.wav",
         minDist = 24,
         maxDist = 36
     },
 
     {
         name = "8M_MM",
-        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/Sounds/Stalker/8m.mp3",
+        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/Sounds/Stalker/8m.wav",
         minDist = 15,
         maxDist = 24
     },
 
     {
         name = "CHASE_MM",
-        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/Sounds/Stalker/chase_m.mp3",
+        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/Sounds/Stalker/chase_m.wav",
         minDist = 0,
         maxDist = 15
     }
@@ -111,7 +113,7 @@ local zones = {}
 
 for i, config in ipairs(zoneConfigs) do
 
-    local filename = "stalker_" .. i .. ".mp3"
+    local filename = "stalker_" .. i .. ".wav"
 
     local downloaded = false
 
