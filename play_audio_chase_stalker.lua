@@ -3,7 +3,7 @@ local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 
--- ЗДЕСЬ ВАШИ ПРЯМЫЕ ССЫЛКИ НА MP3 (с GitHub или другого хостинга)
+-- ВАШИ ССЫЛКИ
 local zones = {
     {name = "32M_MM",   soundUrl = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/Sounds/Stalker/32m.mp3", minDist = 72, maxDist = 96},
     {name = "24M_MM",   soundUrl = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/Sounds/Stalker/24m.mp3", minDist = 36, maxDist = 72},
@@ -12,28 +12,62 @@ local zones = {
     {name = "CHASE_MM", soundUrl = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/Sounds/Stalker/chase_m.mp3", minDist = 0,  maxDist = 15},
 }
 
-local currentSound = nil  -- теперь это syn.sound объект
+local currentSound = nil
+local currentUrl = nil
 local currentTarget = nil
 
--- Функция для создания/проигрывания звука через syn.sound
+-- Функция воспроизведения с защитой
 local function playSound(url)
     if currentSound then
-        currentSound:Stop()
+        pcall(function() currentSound:Stop() end)
         currentSound = nil
     end
     
-    if url then
-        currentSound = syn.sound(url, "http")
-        if currentSound then
-            currentSound:Play()
-            currentSound.Looped = true
-            currentSound.Volume = 0.5
-            print("🎵 Играет:", url)
+    if not url then return end
+    
+    -- Пробуем разные варианты syn.sound
+    local sound = nil
+    local success = false
+    
+    -- Вариант 1: syn.sound(url, "http")
+    success, sound = pcall(function()
+        return syn.sound(url, "http")
+    end)
+    
+    -- Вариант 2: syn.sound({Url = url, Type = "http"})
+    if not success or not sound then
+        success, sound = pcall(function()
+            return syn.sound({Url = url, Type = "http"})
+        end)
+    end
+    
+    -- Вариант 3: syn.sound(url) без второго аргумента
+    if not success or not sound then
+        success, sound = pcall(function()
+            return syn.sound(url)
+        end)
+    end
+    
+    if success and sound then
+        currentSound = sound
+        currentUrl = url
+        pcall(function()
+            sound:Play()
+            sound.Looped = true
+            sound.Volume = 0.5
+        end)
+        print("🎵 Играет:", url)
+        return true
+    else
+        print("❌ Не удалось загрузить звук:", url)
+        if not success then
+            print("Ошибка:", sound)
         end
+        return false
     end
 end
 
--- Остальные функции без изменений (getGameValue, isStalkerKiller, getStalker, getRoot, getDistance, getZoneForDistance)
+-- Проверка киллера (исправлена)
 local function getGameValue(obj, name)
     if not obj then return nil end
     local attr = obj:GetAttribute(name)
@@ -48,10 +82,20 @@ end
 
 local function isStalkerKiller(p)
     if not p or p == player then return false end
+    
     local teamName = (p.Team and p.Team.Name:lower()) or ""
-    if not teamName:find("killer", 1, true) then return false end
+    -- Проверяем, является ли игрок убийцей (любое имя команды)
+    if not teamName:find("killer", 1, true) and not teamName:find("murderer", 1, true) and not teamName:find("slasher", 1, true) then
+        return false
+    end
+    
     local selectedKiller = getGameValue(p, "SelectedKiller")
-    return selectedKiller ~= nil and tostring(selectedKiller):lower() == "Slasher"
+    if selectedKiller then
+        local killerName = tostring(selectedKiller):lower()
+        return killerName == "stalker" or killerName == "slasher"
+    end
+    
+    return false
 end
 
 local function getStalker()
@@ -89,8 +133,9 @@ RunService.Heartbeat:Connect(function()
     
     if not stalker then
         if currentSound then
-            currentSound:Stop()
+            pcall(function() currentSound:Stop() end)
             currentSound = nil
+            currentUrl = nil
         end
         currentTarget = nil
         return
@@ -99,8 +144,9 @@ RunService.Heartbeat:Connect(function()
     local dist = getDistance(stalker)
     if dist == nil then
         if currentSound then
-            currentSound:Stop()
+            pcall(function() currentSound:Stop() end)
             currentSound = nil
+            currentUrl = nil
         end
         currentTarget = nil
         return
@@ -111,21 +157,24 @@ RunService.Heartbeat:Connect(function()
     
     if stalker ~= currentTarget then
         if currentSound then
-            currentSound:Stop()
+            pcall(function() currentSound:Stop() end)
             currentSound = nil
+            currentUrl = nil
         end
         currentTarget = stalker
     end
     
-    -- Если текущий звук не соответствует нужной зоне или его нет
     if targetUrl then
-        if not currentSound or currentSound._url ~= targetUrl then
+        if targetUrl ~= currentUrl then
             playSound(targetUrl)
         end
     else
         if currentSound then
-            currentSound:Stop()
+            pcall(function() currentSound:Stop() end)
             currentSound = nil
+            currentUrl = nil
         end
     end
 end)
+
+print("✅ Скрипт Stalker Audio загружен!")
