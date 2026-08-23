@@ -23,6 +23,8 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
+local UserInputService = game:GetService("UserInputService")
+local ContentProvider = game:GetService("ContentProvider")
 
 local player = Players.LocalPlayer
 
@@ -33,7 +35,16 @@ local player = Players.LocalPlayer
 
 local SOUND_VOLUME = 0.5
 
-local UPDATE_INTERVAL = 0.05
+-- На телефонах слишком частые проверки и переключения
+-- могут давать лишние микрофризы.
+local IS_MOBILE =
+    UserInputService.TouchEnabled
+    and not UserInputService.KeyboardEnabled
+
+local UPDATE_INTERVAL =
+    IS_MOBILE
+    and 0.10
+    or 0.05
 
 -- Версия кэша.
 -- Используется новое имя, чтобы старые битые WAV
@@ -280,6 +291,7 @@ print("isfile:", type(isfile))
 print("readfile:", type(readfile))
 print("getcustomasset:", type(getcustomasset))
 print("getsynasset:", type(getsynasset))
+print("📱 Mobile mode:", IS_MOBILE)
 
 
 if type(writefile) ~= "function" then
@@ -762,6 +774,21 @@ for i, config in ipairs(killerZoneConfigs) do
 end
 
 
+
+-- =========================================================
+-- ПРЕДЗАГРУЗКА AUDIO
+-- =========================================================
+--
+-- Загружаем звуки один раз до начала переключений.
+-- Это особенно важно для телефонов.
+-- =========================================================
+
+preloadDownloadedSounds({
+    zones,
+    maskedZones,
+    killerZones
+})
+
 -- =========================================================
 -- ТЕКУЩИЙ STALKER SOUND
 -- =========================================================
@@ -786,54 +813,54 @@ local function stopCurrentSound()
 
         end)
 
-
-        pcall(function()
-
-            currentSound:Destroy()
-
-        end)
-
-
-        currentSound = nil
-
     end
 
 
+    currentSound = nil
     currentFile = nil
 
 end
 
 
 -- =========================================================
--- PLAY STALKER SOUND
+-- КЭШ CUSTOM SOUNDS
+-- =========================================================
+--
+-- Раньше при каждой смене дистанционной зоны создавался
+-- новый Sound и снова вызывался PreloadAsync().
+--
+-- На мобильных это может вызывать микрофризы и треск/заикание.
+-- Теперь Sound создаётся один раз и переиспользуется.
 -- =========================================================
 
-local function playSoundFile(filename)
+local soundCache = {}
+
+
+local function destroyCachedSounds()
+
+    for _, sound in pairs(soundCache) do
+
+        pcall(function()
+            sound:Stop()
+            sound:Destroy()
+        end)
+
+    end
+
+    table.clear(soundCache)
+
+end
+
+
+local function createCachedSound(filename)
 
     if not filename then
-
-        stopCurrentSound()
-
-        return
-
+        return nil
     end
 
-
-    -- Уже играет нужный звук.
-    if currentFile == filename
-        and currentSound then
-
-        return
-
+    if soundCache[filename] then
+        return soundCache[filename]
     end
-
-
-    -- Останавливаем предыдущую дистанционную музыку.
-    stopCurrentSound()
-
-
-    print("")
-    print("🔊 Загружаем:", filename)
 
 
     local assetUrl =
@@ -843,19 +870,12 @@ local function playSoundFile(filename)
     if not assetUrl then
 
         warn(
-            "❌ Не удалось загрузить:",
+            "❌ Не удалось получить asset:",
             filename
         )
 
-        return
-
+        return nil
     end
-
-
-    print(
-        "🔗 Asset:",
-        assetUrl
-    )
 
 
     local sound =
@@ -863,19 +883,142 @@ local function playSoundFile(filename)
 
 
     sound.Name =
-        "KillerCustomAudio"
+        "KillerCustomAudio_" .. filename
+
 
     sound.SoundId =
         assetUrl
 
+
     sound.Volume =
         SOUND_VOLUME
+
 
     sound.Looped =
         true
 
+
     sound.Parent =
         SoundService
+
+
+    soundCache[filename] =
+        sound
+
+
+    return sound
+end
+
+
+local function preloadDownloadedSounds(zoneLists)
+
+    local soundsToPreload = {}
+
+    for _, zoneList in ipairs(zoneLists) do
+
+        for _, zone in ipairs(zoneList) do
+
+            if zone.file then
+
+                local sound =
+                    createCachedSound(
+                        zone.file
+                    )
+
+                if sound then
+
+                    soundsToPreload[
+                        #soundsToPreload + 1
+                    ] = sound
+
+                end
+
+            end
+
+        end
+
+    end
+
+
+    if #soundsToPreload == 0 then
+        return
+    end
+
+
+    print("")
+    print("========================================")
+    print("   ПОДГОТОВКА AUDIO CACHE")
+    print("========================================")
+
+
+    local ok, err =
+        pcall(function()
+
+            ContentProvider:PreloadAsync(
+                soundsToPreload
+            )
+
+        end)
+
+
+    if ok then
+
+        print(
+            "✅ Audio cache готов:",
+            #soundsToPreload,
+            "звуков"
+        )
+
+    else
+
+        warn(
+            "⚠️ Audio preload:",
+            tostring(err)
+        )
+
+    end
+
+end
+
+
+local function playSoundFile(filename)
+
+    if not filename then
+
+        stopCurrentSound()
+
+        return
+    end
+
+
+    -- Уже играет нужный звук.
+    if currentFile == filename
+        and currentSound then
+
+        return
+    end
+
+
+    stopCurrentSound()
+
+
+    print("")
+    print("🔊 Переключение:", filename)
+
+
+    local sound =
+        createCachedSound(filename)
+
+
+    if not sound then
+
+        warn(
+            "❌ Не удалось создать Sound:",
+            filename
+        )
+
+        return
+    end
 
 
     currentSound =
@@ -884,40 +1027,6 @@ local function playSoundFile(filename)
     currentFile =
         filename
 
-
-    -- =====================================================
-    -- PRELOAD
-    -- =====================================================
-
-    local preloadOk,
-        preloadError =
-        pcall(function()
-
-            local ContentProvider =
-                game:GetService(
-                    "ContentProvider"
-                )
-
-            ContentProvider:PreloadAsync({
-                sound
-            })
-
-        end)
-
-
-    if not preloadOk then
-
-        warn(
-            "⚠️ PreloadAsync:",
-            tostring(preloadError)
-        )
-
-    end
-
-
-    -- =====================================================
-    -- PLAY
-    -- =====================================================
 
     local playOk,
         playError =
@@ -934,14 +1043,6 @@ local function playSoundFile(filename)
             "❌ Play() ошибка:",
             tostring(playError)
         )
-
-
-        pcall(function()
-
-            sound:Destroy()
-
-        end)
-
 
         currentSound = nil
         currentFile = nil
@@ -1343,4 +1444,5 @@ print("========================================")
 print("✅ STALKER + MASKED + KILLER AUDIO ЗАПУЩЕН")
 print("🚫 KILLER CHASE MUSIC ЗАБЛОКИРОВАНА")
 print("🎵 Ожидание Stalker / Masked / Killer...")
+print("📱 Mobile audio optimization:", IS_MOBILE)
 print("========================================")
