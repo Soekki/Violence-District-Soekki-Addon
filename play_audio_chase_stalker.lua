@@ -1,5 +1,5 @@
 -- =========================================================
--- STALKER + MASKED CUSTOM CHASE MUSIC
+-- STALKER + MASKED + KILLER CUSTOM CHASE MUSIC
 -- =========================================================
 --
 -- 1. Блокирует стандартную музыку Killer (ChaseMusic)
@@ -136,6 +136,64 @@ local maskedZoneConfigs = {
 
 
 -- =========================================================
+-- KILLER WAV
+-- =========================================================
+-- 0-15m    -> chase_k.wav
+-- 15-24m   -> 8m.wav
+-- 24-36m   -> 16m.wav
+-- 36-72m   -> 24m.wav
+-- 72-96m   -> 32m.wav
+-- 96-128m  -> 64m.wav
+-- >128m    -> тишина
+-- =========================================================
+
+local killerZoneConfigs = {
+
+    {
+        name = "64M_KILLER",
+        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/main/Sounds/Killer/64m.wav",
+        minDist = 96,
+        maxDist = 128
+    },
+
+    {
+        name = "32M_KILLER",
+        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/main/Sounds/Killer/32m.wav",
+        minDist = 72,
+        maxDist = 96
+    },
+
+    {
+        name = "24M_KILLER",
+        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/main/Sounds/Killer/24m.wav",
+        minDist = 36,
+        maxDist = 72
+    },
+
+    {
+        name = "16M_KILLER",
+        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/main/Sounds/Killer/16m.wav",
+        minDist = 24,
+        maxDist = 36
+    },
+
+    {
+        name = "8M_KILLER",
+        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/main/Sounds/Killer/8m.wav",
+        minDist = 15,
+        maxDist = 24
+    },
+
+    {
+        name = "CHASE_KILLER",
+        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/main/Sounds/Killer/chase_k.wav",
+        minDist = 0,
+        maxDist = 15
+    }
+}
+
+
+-- =========================================================
 -- БЛОКИРОВКА ОРИГИНАЛЬНОЙ МУЗЫКИ KILLER
 -- =========================================================
 --
@@ -214,7 +272,7 @@ blockKillerMusic()
 -- =========================================================
 
 print("========================================")
-print("   STALKER + MASKED AUDIO / XENO")
+print("   STALKER + MASKED + KILLER AUDIO / XENO")
 print("========================================")
 
 print("writefile:", type(writefile))
@@ -650,6 +708,61 @@ end
 
 
 -- =========================================================
+-- ЗАГРУЗКА KILLER WAV
+-- =========================================================
+
+local killerZones = {}
+
+for i, config in ipairs(killerZoneConfigs) do
+
+    local filename =
+        getCacheFilename("killer", i)
+
+    local downloaded = false
+
+    if isCachedWavValid(filename) then
+
+        print(
+            "📁 Уже есть корректный KILLER WAV:",
+            filename
+        )
+
+        downloaded = true
+
+    else
+
+        print(
+            "🔄 KILLER файл отсутствует или повреждён:",
+            filename
+        )
+
+        downloaded =
+            downloadSound(
+                config,
+                filename
+            )
+
+    end
+
+    killerZones[#killerZones + 1] = {
+
+        name = config.name,
+
+        file =
+            downloaded
+            and filename
+            or nil,
+
+        minDist = config.minDist,
+
+        maxDist = config.maxDist
+
+    }
+
+end
+
+
+-- =========================================================
 -- ТЕКУЩИЙ STALKER SOUND
 -- =========================================================
 
@@ -959,6 +1072,10 @@ local function getKillerType(p)
             return "Masked"
         end
 
+        if killerName == "killer" then
+            return "Killer"
+        end
+
         if killerName == "stalker"
             or killerName == "slasher" then
             return "Stalker"
@@ -1129,6 +1246,8 @@ RunService.Heartbeat:Connect(
 
         if killerType == "Masked" then
             activeZones = maskedZones
+        elseif killerType == "Killer" then
+            activeZones = killerZones
         else
             activeZones = zones
         end
@@ -1198,7 +1317,8 @@ RunService.Heartbeat:Connect(
 
         else
 
-            -- Для обоих киллеров максимальная дистанция = 96m.
+            -- Stalker/Masked: максимум 96m.
+            -- Killer: максимум 128m.
             if currentSound then
 
                 print(
@@ -1220,7 +1340,7 @@ RunService.Heartbeat:Connect(
 
 print("")
 print("========================================")
-print("✅ STALKER + MASKED AUDIO ЗАПУЩЕН")
+print("✅ STALKER + MASKED + KILLER AUDIO ЗАПУЩЕН")
 print("🚫 KILLER CHASE MUSIC ЗАБЛОКИРОВАНА")
-print("🎵 Ожидание Stalker / Masked...")
+print("🎵 Ожидание Stalker / Masked / Killer...")
 print("========================================")
