@@ -147,6 +147,47 @@ local maskedZoneConfigs = {
 
 
 -- =========================================================
+-- SLASHER WAV
+-- =========================================================
+-- 0-24m   -> chase_tm.wav
+-- 24-48m  -> 8m.wav
+-- 48-72m  -> 18m.wav
+-- 72-96m  -> 32m.wav
+-- =========================================================
+
+local slasherZoneConfigs = {
+
+    {
+        name = "32M_SLASHER",
+        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/main/Sounds/Slasher/32m.wav",
+        minDist = 72,
+        maxDist = 96
+    },
+
+    {
+        name = "18M_SLASHER",
+        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/main/Sounds/Slasher/18m.wav",
+        minDist = 48,
+        maxDist = 72
+    },
+
+    {
+        name = "8M_SLASHER",
+        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/main/Sounds/Slasher/8m.wav",
+        minDist = 24,
+        maxDist = 48
+    },
+
+    {
+        name = "CHASE_SLASHER",
+        url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/main/Sounds/Slasher/chase_tm.wav",
+        minDist = 0,
+        maxDist = 24
+    }
+}
+
+
+-- =========================================================
 -- KILLER WAV
 -- =========================================================
 -- 0-15m    -> chase_k.wav
@@ -283,7 +324,7 @@ blockKillerMusic()
 -- =========================================================
 
 print("========================================")
-print("   STALKER + MASKED + KILLER AUDIO / XENO")
+print("   STALKER + MASKED + SLASHER + KILLER AUDIO / XENO")
 print("========================================")
 
 print("writefile:", type(writefile))
@@ -720,6 +761,61 @@ end
 
 
 -- =========================================================
+-- ЗАГРУЗКА SLASHER WAV
+-- =========================================================
+
+local slasherZones = {}
+
+for i, config in ipairs(slasherZoneConfigs) do
+
+    local filename =
+        getCacheFilename("slasher", i)
+
+    local downloaded = false
+
+    if isCachedWavValid(filename) then
+
+        print(
+            "📁 Уже есть корректный SLASHER WAV:",
+            filename
+        )
+
+        downloaded = true
+
+    else
+
+        print(
+            "🔄 SLASHER файл отсутствует или повреждён:",
+            filename
+        )
+
+        downloaded =
+            downloadSound(
+                config,
+                filename
+            )
+
+    end
+
+    slasherZones[#slasherZones + 1] = {
+
+        name = config.name,
+
+        file =
+            downloaded
+            and filename
+            or nil,
+
+        minDist = config.minDist,
+
+        maxDist = config.maxDist
+
+    }
+
+end
+
+
+-- =========================================================
 -- ЗАГРУЗКА KILLER WAV
 -- =========================================================
 
@@ -1055,6 +1151,7 @@ end
 preloadDownloadedSounds({
     zones,
     maskedZones,
+    slasherZones,
     killerZones
 })
 
@@ -1177,9 +1274,12 @@ local function getKillerType(p)
             return "Killer"
         end
 
-        if killerName == "stalker"
-            or killerName == "slasher" then
+        if killerName == "stalker" then
             return "Stalker"
+        end
+
+        if killerName == "slasher" then
+            return "Slasher"
         end
 
         return nil
@@ -1327,7 +1427,7 @@ RunService.Heartbeat:Connect(
 
         blockKillerMusic()
 
-        -- Ищем Stalker или Masked.
+        -- Ищем Stalker, Masked, Slasher или Killer.
         local killer, killerType =
             getKiller()
 
@@ -1345,12 +1445,36 @@ RunService.Heartbeat:Connect(
 
         local activeZones
 
-        if killerType == "Masked" then
+        -- ВАЖНО:
+        -- Stalker должен выбираться только при явном killerType == "Stalker".
+        -- Раньше Stalker был в else, поэтому любое неизвестное/неопределённое
+        -- значение типа убийцы автоматически включало Stalker WAV.
+        if killerType == "Stalker" then
+            activeZones = zones
+
+        elseif killerType == "Masked" then
             activeZones = maskedZones
+
+        elseif killerType == "Slasher" then
+            activeZones = slasherZones
+
         elseif killerType == "Killer" then
             activeZones = killerZones
+
         else
-            activeZones = zones
+            -- Неизвестный тип = никакого custom audio.
+            activeZones = nil
+        end
+
+        -- Никогда не подставляем Stalker при неизвестном типе.
+        if not activeZones then
+            if currentSound then
+                stopCurrentSound()
+            end
+
+            currentTarget = nil
+            currentKillerType = nil
+            return
         end
 
         local dist =
@@ -1418,7 +1542,7 @@ RunService.Heartbeat:Connect(
 
         else
 
-            -- Stalker/Masked: максимум 96m.
+            -- Stalker/Masked/Slasher: максимум 96m.
             -- Killer: максимум 128m.
             if currentSound then
 
@@ -1441,8 +1565,8 @@ RunService.Heartbeat:Connect(
 
 print("")
 print("========================================")
-print("✅ STALKER + MASKED + KILLER AUDIO ЗАПУЩЕН")
+print("✅ STALKER + MASKED + SLASHER + KILLER AUDIO ЗАПУЩЕН")
 print("🚫 KILLER CHASE MUSIC ЗАБЛОКИРОВАНА")
-print("🎵 Ожидание Stalker / Masked / Killer...")
+print("🎵 Ожидание Stalker / Masked / Slasher / Killer...")
 print("📱 Mobile audio optimization:", IS_MOBILE)
 print("========================================")
