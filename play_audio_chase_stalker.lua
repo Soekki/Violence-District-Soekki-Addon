@@ -64,7 +64,7 @@ local zoneConfigs = {
         url = "https://raw.githubusercontent.com/Soekki/Violence-District-Soekki-Addon/main/Sounds/Stalker/32m.wav",
 
         minDist = 72,
-        maxDist = 96
+        maxDist = 100000000
     },
 
     {
